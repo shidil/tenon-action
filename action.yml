@@ -1,0 +1,84 @@
+name: Tenon
+description: >-
+  Seal this repository's API integrations against their specs and keep a dashboard issue up to
+  date; on pull requests, annotate API calls the change breaks.
+author: shidil
+branding:
+  icon: check-circle
+  color: purple
+inputs:
+  mode:
+    description: auto (check on pull requests, seal otherwise), seal or check
+    default: auto
+  fail-on:
+    description: never, or error (fail on new errors in a PR; on a failing integration otherwise)
+    default: never
+  dashboard:
+    description: keep the dashboard issue up to date when sealing
+    default: "true"
+  dashboard-branch:
+    description: branch whose seals the dashboard shows (default the repository's default branch)
+    default: ""
+  config:
+    description: path of tenon.yaml (default tenon.yaml at the repository root)
+    default: ""
+  token:
+    description: token for the dashboard issue (needs issues write)
+    default: ${{ github.token }}
+  version:
+    description: Tenon version to run (default the one this action release ships)
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install tenon
+      shell: bash
+      env:
+        TENON_VERSION: ${{ inputs.version }}
+        ACTION_VERSION: v0.1.0
+      run: |
+        set -euo pipefail
+        v="${TENON_VERSION:-$ACTION_VERSION}"
+        case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "unsupported architecture $(uname -m)"; exit 1 ;; esac
+        [ "$(uname -s)" = Linux ] || { echo "tenon-action runs on Linux runners"; exit 1; }
+        dir="$RUNNER_TOOL_CACHE/tenon/$v/$arch"
+        if [ ! -x "$dir/tenon" ]; then
+          base="https://github.com/shidil/tenon-action/releases/download/$v"
+          tmp="$(mktemp -d)"
+          curl -fsSL "$base/tenon_${v}_linux_${arch}.tar.gz" -o "$tmp/tenon.tar.gz"
+          curl -fsSL "$base/checksums.txt" -o "$tmp/checksums.txt"
+          (cd "$tmp" && grep " tenon_${v}_linux_${arch}.tar.gz\$" checksums.txt | sed "s# tenon_.*# tenon.tar.gz#" | sha256sum -c -)
+          mkdir -p "$dir" && tar -xzf "$tmp/tenon.tar.gz" -C "$dir" tenon
+        fi
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "TENON_DB=$RUNNER_TEMP/tenon/tenon.db" >> "$GITHUB_ENV"
+        echo "TENON_CACHE_REF=${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+    - name: Restore Tenon database
+      if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/tenon
+        key: tenon-db-${{ env.TENON_CACHE_REF }}-${{ github.run_id }}
+        restore-keys: tenon-db-${{ env.TENON_CACHE_REF }}-
+    - name: Run tenon
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_DASHBOARD: ${{ inputs.dashboard }}
+        INPUT_DASHBOARD_BRANCH: ${{ inputs.dashboard-branch }}
+        INPUT_CONFIG: ${{ inputs.config }}
+      run: |
+        set -euo pipefail
+        args=(ci -mode "$INPUT_MODE" -fail-on "$INPUT_FAIL_ON" -dashboard="$INPUT_DASHBOARD")
+        [ -n "$INPUT_DASHBOARD_BRANCH" ] && args+=(-dashboard-branch "$INPUT_DASHBOARD_BRANCH")
+        [ -n "$INPUT_CONFIG" ] && args+=(-config "$INPUT_CONFIG")
+        tenon version
+        tenon "${args[@]}"
+    - name: Save Tenon database
+      if: always() && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/tenon
+        key: tenon-db-${{ env.TENON_CACHE_REF }}-${{ github.run_id }}
