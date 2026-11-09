@@ -31,10 +31,10 @@ jobs:
   tenon:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # pull requests are compared with their base
-      - uses: actions/setup-go@v6 # Go repositories: the type-aware analysis uses the toolchain
+      - uses: actions/setup-go@v7 # Go repositories: the type-aware analysis uses the toolchain
         with:
           go-version-file: go.mod
       - uses: shidil/tenon-action@v0

@@ -35,7 +35,7 @@ runs:
       shell: bash
       env:
         TENON_VERSION: ${{ inputs.version }}
-        ACTION_VERSION: v0.1.0
+        ACTION_VERSION: v0.1.1
       run: |
         set -euo pipefail
         v="${TENON_VERSION:-$ACTION_VERSION}"
@@ -55,7 +55,7 @@ runs:
         echo "TENON_CACHE_REF=${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" >> "$GITHUB_ENV"
     - name: Restore Tenon database
       if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/tenon
         key: tenon-db-${{ env.TENON_CACHE_REF }}-${{ github.run_id }}
@@ -78,7 +78,7 @@ runs:
         tenon "${args[@]}"
     - name: Save Tenon database
       if: always() && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: ${{ runner.temp }}/tenon
         key: tenon-db-${{ env.TENON_CACHE_REF }}-${{ github.run_id }}
